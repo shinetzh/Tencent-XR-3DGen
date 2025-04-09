@@ -1,23 +1,3 @@
-# <div align = "center">‌Tencent XR 3DGen Suite: Integrated Framework for High-Quality 3D Shape Generation, Texture Synthesis, and Character Customization</div>
-
-<div align="center">
-<a href="https://arxiv.org/abs/2502.14247"><img src="https://img.shields.io/badge/ArXiv-2502.14247-004088.svg"/></a>
-<a href=https://huggingface.co/spaces/peterji/PandoraX><img src=https://img.shields.io/badge/%F0%9F%A4%97%20Demo-276cb4.svg></a>
-<a href=https://huggingface.co/peterji/Tencent_XR_3DGen><img src=https://img.shields.io/badge/%F0%9F%A4%97%20Models-d96902.svg></a>
-<!-- <a href="https://youtu.be/guFg_Ppt1Ag">
-<img alt="Youtube" src="https://img.shields.io/badge/Video-Youtube-red"/>
-</a> -->
-<!-- <a ><img alt="PRs-Welcome" src="https://img.shields.io/badge/PRs-Welcome-red" /></a> -->
-<a href="https://github.com/Tencent/Tencent-XR-3DGen/stargazers">
-<img alt="stars" src="https://img.shields.io/github/stars/Tencent/Tencent-XR-3DGen" />
-</a>
-<a href="https://github.com/Tencent/Tencent-XR-3DGen/network/members">
-<img alt="FORK" src="https://img.shields.io/github/forks/MAVIS-SLAM/ORB_SLAM3_MULTI?color=FF8000" />
-</a>
-<a href="https://github.com/Tencent/Tencent-XR-3DGen/issues">
-<img alt="Issues" src="https://img.shields.io/github/issues/Tencent/Tencent-XR-3DGen?color=0088ff"/>
-</a>
-</div>
 
 <p align="center">
   <img src="assets/3a92f986-096a-4ec3-a03b-8374ca5bffa1.gif" width="16%" />
@@ -63,8 +43,13 @@ PandoraX
 
 dependencies for submodules are zipped under `requirements_txt.zip`
 
-model weights and tech report can be downloaded from https://drive.google.com/drive/folders/1NgtWeouNiM-G5VtZMQRF10f2ymNzLsdn
+1. model weights and tech report can be downloaded from https://drive.google.com/drive/folders/1NgtWeouNiM-G5VtZMQRF10f2ymNzLsdn
 
+2. Inference:
+
+(1). After downloading the weights, please update the "pretrained_weights_path" in ./geometry/main_pipeline/diffusion/utils/rmbg1_4.py and ./texture/tex_refine/sam_preprocess/run_sam.py
+
+(2). python test_inference.py --image_path path of the input image --save_dir path of the save dir --weights_path path of the pretrained weights
 
 ## License
 

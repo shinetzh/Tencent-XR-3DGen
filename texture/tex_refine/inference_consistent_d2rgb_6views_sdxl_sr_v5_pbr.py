@@ -14,6 +14,7 @@ import argparse
 from pdb import set_trace as st
 import nvdiffrast.torch as dr
 import gc
+import openai
 
 # Pre-process for multi-view d2rgb
 from sam_preprocess.run_sam import process_image_path
@@ -36,14 +37,64 @@ from realesrgan.archs.srvgg_arch import SRVGGNetCompact
 from compel import Compel, ReturnedEmbeddingsType
 
 # Captioning
-from gpt_caption import gpt_caption
+# from gpt_caption import gpt_caption
+
+import base64
+from io import BytesIO
+
+# Set your OpenAI API key
+openai.api_key = 'YOUR_OPENAI_API_KEY'
+
+def gpt_caption(ref_img_path, retries=2, default=""):
+    """
+    Generates a caption for the given image using OpenAI's GPT-4 Vision API.
+
+    Parameters:
+        ref_img_path (str): The file path to the reference image.
+        retries (int): The number of times to retry the API call in case of failure.
+        default (str): The default caption to return if all retries fail.
+
+    Returns:
+        str: The generated caption or the default caption if an error occurs.
+    """
+    # Load and encode the image in base64
+    try:
+        with Image.open(ref_img_path) as img:
+            buffered = BytesIO()
+            img.save(buffered, format="JPEG")
+            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    except Exception as e:
+        print(f"Error loading or encoding image: {e}")
+        return default
+
+    # Define the system prompt
+    system_prompt = "You are an AI assistant that generates descriptive captions for images."
+
+    # Attempt to get a caption from the API, retrying if necessary
+    for attempt in range(retries):
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4-vision-preview",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": [{"type": "image", "image": img_base64}]}
+                ]
+            )
+            caption = response['choices'][0]['message']['content'].strip()
+            return caption
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            time.sleep(2 ** attempt)  # Exponential backoff
+
+    # If all retries fail, return the default caption
+    return default
+
 
 def init_models(
     rotate_input_mesh=False,
     three_views_input=False,
     debug_outputs=True
 ):
-
 
     # args
     args = DotMap()
@@ -80,11 +131,12 @@ def init_models(
 
 
     ##### SDXL #####
-    args.pretrained_model_name_or_path="./pretrained/helloworldXL70/"
+    # args.pretrained_model_name_or_path="./weights/helloworldXL70/"
+    args.pretrained_model_name_or_path="/root/autodl-tmp/xibin/weights/helloworldXL70"
     # args.pretrained_model_name_or_path="./pretrained/sdxl-lightning-4steps/"
     # args.pretrained_model_name_or_path = '/aigc_cfs_gdp/jiayu/consistent_scheduler_xibin/pretrained/stable-diffusion-xl-base-1.0'
     
-    args.resolution = 1536
+    args.resolution = 1280
     if three_views_input:
         # 3 ref images.
         args.num_inference_steps = 16
@@ -92,7 +144,8 @@ def init_models(
         args.sdxl_cfg_scheduler_params = [24,2]
         args.sdxl_1st_stage_output_sharpen_factor = 1.0
 
-        args.xyz_controlnet_path = "./pretrained_sdxl_xyz_controlnet"
+        # args.xyz_controlnet_path = "./weights/pretrained_sdxl_xyz_controlnet"
+        args.xyz_controlnet_path = "/root/autodl-tmp/xibin/weights/pretrained_sdxl_xyz_controlnet"
         args.sdxl_controlnet_scale_xyz = 0.0
         args.sdxl_controlnet_scale_tile = 0.6
         args.sdxl_controlnet_scale_depth = 0.9
@@ -107,7 +160,8 @@ def init_models(
         args.sdxl_cfg_scheduler_params = [24,2]
         args.sdxl_1st_stage_output_sharpen_factor = 1.3
 
-        args.xyz_controlnet_path = "./pretrained_sdxl_xyz_controlnet"
+        # args.xyz_controlnet_path = "./weights/pretrained_sdxl_xyz_controlnet"
+        args.xyz_controlnet_path = "/root/autodl-tmp/xibin/weights/pretrained_sdxl_xyz_controlnet"
         args.sdxl_controlnet_scale_xyz = 1.0
         args.sdxl_controlnet_scale_tile = 0.6
         args.sdxl_controlnet_scale_depth = 0.9
@@ -145,7 +199,7 @@ def init_models(
         # -1.0
     ]
 
-    args.sdxl_second_refine_resolution = 2048
+    args.sdxl_second_refine_resolution = 1280
     # args.sdxl_second_refine_resolution = 2368
     args.sdxl_second_refine_num_inference_steps = 12
     args.sdxl_second_refine_denoising_strength = 0.3
@@ -169,7 +223,8 @@ def init_models(
     print("[REAL-ESRGAN] Loading model...")
     # Small model
     denoise_strength = 0
-    model_path='weights/realesrgan/realesr-general-x4v3.pth'
+    # model_path='weights/realesrgan/realesr-general-x4v3.pth'
+    model_path='/root/autodl-tmp/xibin/code/model/realesrgan/realesr-general-x4v3.pth'
     # model_path='pretrained/realesrgan/realesr-general-wdn-x4v3.pth'
     model = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=64, num_conv=32, upscale=4, act_type='prelu')
     # wdn_model_path = model_path.replace('realesr-general-x4v3', 'realesr-general-wdn-x4v3')
@@ -187,7 +242,8 @@ def init_models(
         gpu_id=0)
 
     # Large x2 model
-    model_path='weights/realesrgan/RealESRGAN_x2plus.pth'
+    # model_path='weights/realesrgan/RealESRGAN_x2plus.pth'
+    model_path = '/root/autodl-tmp/xibin/code/model/realesrgan/RealESRGAN_x2plus.pth'
     model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2)
     netscale = 2
     upsampler = RealESRGANer(
@@ -220,8 +276,11 @@ def init_models(
     #################################### D2RGB ####################################
     # Create pipeline (d2rgb)
     if args.three_views_input:
-        args.z123_model_path = "./weights/zero23plus_v25_4vews_abs_39000" # 3views model
-        args.controlnet_model_path = "./weights/zero23_controlnet_8000"
+        # args.z123_model_path = "./weights/zero23plus_v25_4vews_abs_39000" # 3views model
+        # args.controlnet_model_path = "./weights/zero23_controlnet_8000"
+
+        args.z123_model_path = os.path.join(weights_path, "zero23plus_v25_4vews_abs_39000") # 3views model
+        args.controlnet_model_path = os.path.join(weights_path, "zero23_controlnet_8000")
 
         pipeline = Zero123PlusPipeline_3views.from_pretrained(
             args.z123_model_path, torch_dtype=torch.float16
@@ -240,9 +299,11 @@ def init_models(
         # controlnet_model_path = "/aigc_cfs_gdp/jiayu/consistent_scheduler_xibin/pretrained/zero123plus_v28_1cond_6views_same_azim_512_controlnet_v100_checkpoint_14000_controlnet" # Copied file from above
 
         # New unified model
-        args.z123_model_path = "./weights/zero123plus_v29_1cond_6views_090180270"
+        # args.z123_model_path = "./weights/zero123plus_v29_1cond_6views_090180270"
+        args.z123_model_path = "/root/autodl-tmp/xibin/weights/zero123plus_v29_1cond_6views_090180270"
         # controlnet_model_path = "/aigc_cfs_gdp/jiayu/consistent_scheduler_xibin/pretrained/zero123plus_v29_1cond_6views_090180270_controlnet_checkpoint-6000_controlnet"
-        args.controlnet_model_path = "./weights/zero123plus_v29_1cond_6views_090180270_controlnet_15000"
+        # args.controlnet_model_path = "./weights/zero123plus_v29_1cond_6views_090180270_controlnet_15000"
+        args.controlnet_model_path = "/root/autodl-tmp/xibin/weights/zero123plus_v29_1cond_6views_090180270_controlnet_15000"
 
         pipeline = Zero123PlusPipeline.from_pretrained(
             args.z123_model_path, torch_dtype=torch.float16
@@ -280,7 +341,8 @@ def init_models(
 
     # Albedo model
     albedo_pipeline = PBRPipeline.from_pretrained(
-                    "./weights/img2img_albedo_6views_512_250k",
+                    # "./weights/img2img_albedo_6views_512_250k",
+                    "/root/autodl-tmp/xibin/weights/img2img_albedo_6views_512_250k",
                     torch_dtype=torch.float16,
                     local_files_only=True
                 )
@@ -293,7 +355,8 @@ def init_models(
 
     # Metallic Roughness model
     metallic_roughness_pipeline = PBRPipeline.from_pretrained(
-                    "./weights/img2img_material_two_outputs",
+                    # "./weights/img2img_material_two_outputs",
+                    "/root/autodl-tmp/xibin/weights/img2img_material_two_outputs",
                     torch_dtype=torch.float16,
                     local_files_only=True
                 )
@@ -308,7 +371,8 @@ def init_models(
     # Reference view albedo model
     from diffusers_albedo_metallic_roughness.src.diffusers.pipelines.img2img.pipeline_img2img_single import Img2ImgPipeline as SingleAlbedoPipeline
     ref_albedo_pipeline = SingleAlbedoPipeline.from_pretrained(
-                        "./weights/delight_models_full_light",
+                        # "./weights/delight_models_full_light",
+                        "/root/autodl-tmp/xibin/weights/delight_models_full_light",
                         torch_dtype=torch.float16,
                         local_files_only=True
                     )
@@ -326,16 +390,22 @@ def init_models(
     # Create pipeline (SDXL)
     print("Creating pipeline...")
     print("vae...")
-    vae = AutoencoderKL.from_pretrained("weights/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+    # vae = AutoencoderKL.from_pretrained("weights/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+    vae = AutoencoderKL.from_pretrained("/root/autodl-tmp/xibin/weights/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
     vae.enable_slicing() # Save memory...
     vae.enable_tiling() # Save memory...
     print("controlnet...")
     # XYZ controlnet
     controlnet_xyz = ControlNetModel.from_pretrained(args.xyz_controlnet_path, torch_dtype=weight_dtype)
+    # # tile controlnet
+    # controlnet_tile = ControlNetModel.from_pretrained('./weights/TTPLANET_Controlnet_Tile/', torch_dtype=weight_dtype)
+    # # depth controlnet
+    # controlnet_depth = ControlNetModel.from_pretrained('./weights/sdxl_depth_controlnet_fp16/', torch_dtype=weight_dtype)
+
     # tile controlnet
-    controlnet_tile = ControlNetModel.from_pretrained('./weights/TTPLANET_Controlnet_Tile/', torch_dtype=weight_dtype)
+    controlnet_tile = ControlNetModel.from_pretrained('/root/autodl-tmp/xibin/weights/TTPLANET_Controlnet_Tile/', torch_dtype=weight_dtype)
     # depth controlnet
-    controlnet_depth = ControlNetModel.from_pretrained('./weights/sdxl_depth_controlnet_fp16/', torch_dtype=weight_dtype)
+    controlnet_depth = ControlNetModel.from_pretrained('/root/autodl-tmp/xibin/weights/sdxl_depth_controlnet_fp16/', torch_dtype=weight_dtype)
 
     print("pipeline...")
     pipeline = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
@@ -356,16 +426,27 @@ def init_models(
     pipeline.cfg_scheduler_params = args.sdxl_cfg_scheduler_params
 
     # Load the LoRA
+    # print("lora...")
+    # if "XDetail_light" in args.sdxl_lora_stack:
+    #     pipeline.load_lora_weights('./weights/', weight_name='XDetail_light.safetensors', adapter_name="XDetail_light")
+    # if "contrast_tool" in args.sdxl_lora_stack:
+    #     pipeline.load_lora_weights('./weights/', weight_name='SDS_Contrast tool_XL.safetensors', adapter_name="contrast_tool")
+    # if "sdxl_lightning_8step_lora" in args.sdxl_lora_stack:
+    #     pipeline.load_lora_weights('./weights/', weight_name='sdxl_lightning_8step_lora.safetensors', adapter_name="sdxl_lightning_8step_lora")
+    # if "xl_color_temp" in args.sdxl_lora_stack:
+    #     pipeline.load_lora_weights('./weights/', weight_name='xl_color_temp.safetensors', adapter_name="xl_color_temp")
+    weights_path = "/root/autodl-tmp/xibin/weights/"
     print("lora...")
     if "XDetail_light" in args.sdxl_lora_stack:
-        pipeline.load_lora_weights('./weights/', weight_name='XDetail_light.safetensors', adapter_name="XDetail_light")
+        pipeline.load_lora_weights(weights_path, weight_name='XDetail_light.safetensors', adapter_name="XDetail_light")
     if "contrast_tool" in args.sdxl_lora_stack:
-        pipeline.load_lora_weights('./weights/', weight_name='SDS_Contrast tool_XL.safetensors', adapter_name="contrast_tool")
+        pipeline.load_lora_weights(weights_path, weight_name='SDS_Contrast tool_XL.safetensors', adapter_name="contrast_tool")
     if "sdxl_lightning_8step_lora" in args.sdxl_lora_stack:
-        pipeline.load_lora_weights('./weights/', weight_name='sdxl_lightning_8step_lora.safetensors', adapter_name="sdxl_lightning_8step_lora")
+        pipeline.load_lora_weights(weights_path, weight_name='sdxl_lightning_8step_lora.safetensors', adapter_name="sdxl_lightning_8step_lora")
     if "xl_color_temp" in args.sdxl_lora_stack:
-        pipeline.load_lora_weights('./weights/', weight_name='xl_color_temp.safetensors', adapter_name="xl_color_temp")
+        pipeline.load_lora_weights(weights_path, weight_name='xl_color_temp.safetensors', adapter_name="xl_color_temp")
     # Activate the LoRA
+    # # Activate the LoRA
     # pipeline.set_adapters(["extremely detailed"], adapter_weights=[2.0])
     # pipeline.set_adapters(["XDetail_light","contrast_tool","sdxl_lightning_8step_lora","xl_color_temp"], adapter_weights=[4.0,1.0,0.8,-1.0])
     # pipeline.set_adapters(["XDetail_light","contrast_tool","sdxl_lightning_8step_lora","xl_color_temp"], adapter_weights=[4.0,0.8,0.7,-1.0])
@@ -391,8 +472,11 @@ def init_models(
 
     # Better IPAdapter
     from ip_adapter import IPAdapterPlusXL
-    image_encoder_path = "./weights/IP-Adapter_image_encoder"
-    ip_ckpt = "./weights/ip-adapter-plus_sdxl_vit-h.bin"
+    # image_encoder_path = "./weights/IP-Adapter_image_encoder"
+    # ip_ckpt = "./weights/ip-adapter-plus_sdxl_vit-h.bin"
+    image_encoder_path = os.path.join(weights_path, "IP-Adapter_image_encoder")
+    ip_ckpt = os.path.join(weights_path, "ip-adapter-plus_sdxl_vit-h.bin")
+
     # load ip-adapter
     ip_model = IPAdapterPlusXL(sdxl_pipeline, image_encoder_path, ip_ckpt, device='cuda', num_tokens=16)
 
@@ -428,7 +512,7 @@ def init_models(
 
     return models
 
-
+@torch.no_grad()
 def run_d2rgb_sdxl_sr(
     models,
     obj_path,  
@@ -997,24 +1081,25 @@ def run_d2rgb_sdxl_sr(
         init_img.save(os.path.join(output_path, 'final_images_d2rgb_upsampled_resized.png'))
 
     # Run ipadapter
-    image = ip_model.generate(
-        # pil_image=ref_img.resize((512,512)),
-        pil_image=ref_img.resize((768,768)),
-        # pil_image=ref_img.resize((1024,1024)),
-        prompt=prompt,
-        negative_prompt='specular, highlight, spotlight, reflection, highlight, glare, high gloss, glossy, high-gloss, low quality, blurry, out of focus, low contrast, low sharpness, low resolution, nude, nsfw',
-        image=init_img, 
-        strength=args.sdxl_denoising_strength, # Denoising strength
-        scale=args.sdxl_ip_adapter_scale, # IP-Adapter scale
-        # ip_adapter_image=ref_img,
-        control_image=[xyz_control_image,init_img,depth_control_image],
-        controlnet_conditioning_scale=[args.sdxl_controlnet_scale_xyz,args.sdxl_controlnet_scale_tile,args.sdxl_controlnet_scale_depth],
-        num_inference_steps=args.num_inference_steps,
-        height=int(args.resolution*1.5),
-        width=args.resolution,
-        guidance_scale=24, # Not working, using cfg_scheduler_type instead.
-        num_samples=1,
-    )[0]
+    with torch.autocast(device_type="cuda"):
+        image = ip_model.generate(
+            # pil_image=ref_img.resize((512,512)),
+            pil_image=ref_img.resize((768,768)),
+            # pil_image=ref_img.resize((1024,1024)),
+            prompt=prompt,
+            negative_prompt='specular, highlight, spotlight, reflection, highlight, glare, high gloss, glossy, high-gloss, low quality, blurry, out of focus, low contrast, low sharpness, low resolution, nude, nsfw',
+            image=init_img, 
+            strength=args.sdxl_denoising_strength, # Denoising strength
+            scale=args.sdxl_ip_adapter_scale, # IP-Adapter scale
+            # ip_adapter_image=ref_img,
+            control_image=[xyz_control_image,init_img,depth_control_image],
+            controlnet_conditioning_scale=[args.sdxl_controlnet_scale_xyz,args.sdxl_controlnet_scale_tile,args.sdxl_controlnet_scale_depth],
+            num_inference_steps=args.num_inference_steps,
+            height=int(args.resolution*1.5),
+            width=args.resolution,
+            guidance_scale=24, # Not working, using cfg_scheduler_type instead.
+            num_samples=1,
+        )[0]
 
     torch.cuda.empty_cache()
 
@@ -1074,22 +1159,23 @@ def run_d2rgb_sdxl_sr(
     if args.debug_outputs:
         image.save(gen_output_path)
 
-    image = ip_model.generate(
-        pil_image=ref_img.resize((1024,1024)),
-        prompt=prompt,
-        negative_prompt='low quality, blurry, out of focus, low contrast, low sharpness, low resolution',
-        image=image, 
-        strength=args.sdxl_second_refine_denoising_strength, # Denoising strength
-        scale=args.sdxl_second_refine_ip_adapter_scale, # IP-Adapter scale
-        # ip_adapter_image=ref_img,
-        control_image=[xyz_control_image,init_img,depth_control_image],
-        controlnet_conditioning_scale=[args.sdxl_second_refine_controlnet_scale_xyz,args.sdxl_second_refine_controlnet_scale_tile,args.sdxl_second_refine_controlnet_scale_depth],
-        num_inference_steps=args.sdxl_second_refine_num_inference_steps,
-        height=int(args.sdxl_second_refine_resolution*1.5),
-        width=args.sdxl_second_refine_resolution,
-        guidance_scale=24, # Not working, using cfg_scheduler_type instead.
-        num_samples=1,
-    )[0]
+    with torch.autocast(device_type="cuda"):
+        image = ip_model.generate(
+            pil_image=ref_img.resize((1024,1024)),
+            prompt=prompt,
+            negative_prompt='low quality, blurry, out of focus, low contrast, low sharpness, low resolution',
+            image=image, 
+            strength=args.sdxl_second_refine_denoising_strength, # Denoising strength
+            scale=args.sdxl_second_refine_ip_adapter_scale, # IP-Adapter scale
+            # ip_adapter_image=ref_img,
+            control_image=[xyz_control_image,init_img,depth_control_image],
+            controlnet_conditioning_scale=[args.sdxl_second_refine_controlnet_scale_xyz,args.sdxl_second_refine_controlnet_scale_tile,args.sdxl_second_refine_controlnet_scale_depth],
+            num_inference_steps=args.sdxl_second_refine_num_inference_steps,
+            height=int(args.sdxl_second_refine_resolution*1.5),
+            width=args.sdxl_second_refine_resolution,
+            guidance_scale=24, # Not working, using cfg_scheduler_type instead.
+            num_samples=1,
+        )[0]
  
     # Save
     gen_output_path = os.path.join(output_path, 'final_images.png')
@@ -1207,33 +1293,15 @@ if __name__ == '__main__':
     # parser.add_argument('--input_link', type=str, default='', help='Path to input obj folder') 
     # 1view img_to_3D sample
     
-    parser.add_argument('--input_link', type=str, default='', help='Path to input obj folder')
-    parser.add_argument('--job_id', type=str, default='983e3b5a-dd68-4dd5-818d-6f319520e00d', help='Given a job id')
-    parser.add_argument('--three_views_input', action='store_true', help='Use 3 views input')
-    parser.add_argument('--repeat', type=int, default=1, help='Path to input obj folder')
+    parser.add_argument('--obj_path', type=str, default='', help='Path to input obj') 
+    parser.add_argument('--ref_img_path', type=str, default='', help='Path to input reference image') 
+    parser.add_argument('--output_path', type=str, default='', help='Path to output folder') 
+    parser.add_argument('--repeat', type=int, default=1, help='Repeat times')
 
     args = parser.parse_args()
 
-    models = init_models(three_views_input=args.three_views_input, debug_outputs=True)
+    models = init_models(three_views_input=False, debug_outputs=True)
 
-    # Load from input link instead
-    if len(args.input_link) > 0:
-        job_id = args.input_link.split("retrieve_NPC/")[1].split("/texture_mesh/")[0]
-    else:
-        job_id = args.job_id
-    # job_id = 'e1ab34d3-435f-4f85-a627-d7dcf08e86ce'
-    # job_id = 'f8c8469d-dba2-4925-b415-54ee24cb8a29'
-    obj_path = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/geom/quad_mesh.obj"
-    if os.path.exists(obj_path) == False:
-        # trellis input
-        obj_path = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/gen3d/obj_mesh_mesh_uv.obj"
-    if os.path.exists(obj_path) == False:
-        # trellis input
-        obj_path = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/gen3d/obj_mesh_mesh.obj"
-    # init_rgb_npy_path = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/d2rgb/out/imgsr/color.npy"
-    ref_img_path = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/output_0.png"
-    prompt_file = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/prompt.txt"
-    
     # Print cuda memory usage
     device = torch.device('cuda:0')
     free, total = torch.cuda.mem_get_info(device)
@@ -1250,10 +1318,10 @@ if __name__ == '__main__':
 
         run_d2rgb_sdxl_sr(
             models,
-            obj_path,
-            ref_img_path,  
-            output_path,
-            job_id,
+            args.obj_path,
+            args.ref_img_path,  
+            args.output_path,
+            job_id=f'job_{current_time}',
             seed=0
         )
 
@@ -1261,116 +1329,5 @@ if __name__ == '__main__':
         device = torch.device('cuda:0')
         free, total = torch.cuda.mem_get_info(device)
         mem_used_mb = (total - free) / 1024 ** 2
-        print(f"[CUDA] Repeat {repeat_time} finished. Memory used: ",mem_used_mb)
+        print(f"[CUDA] Finished. Memory used: ",mem_used_mb)
         # torch.cuda.memory_summary()
-
-        with open('debug.txt', 'a') as the_file:
-            the_file.write(f"[CUDA] Repeat {repeat_time} finished. Memory used: {mem_used_mb} \n")
-
-    # # smart uv
-    # # job_id = args.input_link.split("retrieve_NPC/")[1].split("/texture_mesh/")[0]
-    # job_id = "f5ef7091-4d54-47ac-9251-8c2b3405d5c8"
-    # obj_path = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/geom/smart_uv.obj"
-    # # init_rgb_npy_path = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/d2rgb/out/imgsr/color.npy"
-    # ref_img_path = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/mesh2image.png"
-    # prompt_file = f"/aigc_cfs_gdp/jiawei/data/general_generate/{job_id}/prompt.txt"
-
-    # current_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    # output_path = os.path.join("./outputs_service_d2rgb_6views_sdxl_sr","debug_service_out",current_time)
-    # os.makedirs(output_path, exist_ok=True)
-
-    # run_d2rgb_sdxl_sr(
-    #     models,
-    #     obj_path,
-    #     ref_img_path,  
-    #     output_path,
-    #     job_id,
-    #     seed=0
-    # )
-
-
-
-# # DEBUG Note
-# # Correct                                                                                                                                                            | 2/36 [00:03<00:57,  1.69s/it][DEBUG] Line 778 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 778 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 175 cross_attention_kwargs created as :  dict_keys(['mode', 'ref_dict'])
-# [DEBUG] Line 177 unet :  <class 'model.zero123plus_unet.UNet2DConditionModelRamping'>
-# [DEBUG] Line 276 cross_attention_kwargs original:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 276 cross_attention_kwargs created as :  dict_keys(['mode', 'ref_dict', 'is_cfg_guidance'])
-# [DEBUG] Line 276 unet :  <class 'model.zero123plus_unet.UNet2DConditionModelRamping'>
-# [CFG SCHEDULER] guidance_scale:  tensor(7.2435, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 0):  tensor(7.2435, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 1):  tensor(10.7631, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 2):  tensor(13.1200, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 3):  tensor(10.7631, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 4):  tensor(10.7631, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 5):  tensor(10.7631, device='cuda:0')
-# Apply consistency on step:  2
-#   8%|███████████████████▋                                                                                                                                                                                                                        | 3/36 [00:05<00:55,  1.68s/it][DEBUG] Line 778 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-
-# # Wrong
-# [DEBUG] Line 1018 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 1018 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# [DEBUG] Line 641 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 641 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-#   0%|                                                                                                                                                                                                                                                    | 0/36 [00:00<?, ?it/s][DEBUG] Line 778 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 778 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 175 cross_attention_kwargs created as :  dict_keys(['mode', 'ref_dict'])
-# [DEBUG] Line 177 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# dict_keys(['mode', 'ref_dict'])
-#   0%|                                                                             
-
-# # unets
-# DepthControlUNet(
-#     RefOnlyNoisedUNet(
-#         UNet2DConditionModelRamping(
-
-#         )
-#     )
-# )
-
-# # New correct
-# without sam
-# [DEBUG] line 961 self.unet:  <class 'd2rgb_pipeline_6views_3views.RefOnlyNoisedUNet'>
-# [DEBUG] line 961 self.unet:  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# [DEBUG] Line 1018 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 1018 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# [DEBUG] Line 641 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 641 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-#   0%|                                                                                                                                                                                                                                                    | 0/36 [00:00<?, ?it/s]
-# [DEBUG] Line 778 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 778 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 175 cross_attention_kwargs created as :  dict_keys(['mode', 'ref_dict'])
-# [DEBUG] Line 177 unet :  <class 'model.zero123plus_unet.UNet2DConditionModelRamping'>
-# [DEBUG] Line 276 cross_attention_kwargs original:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 276 cross_attention_kwargs created as :  dict_keys(['mode', 'ref_dict', 'is_cfg_guidance'])
-# [DEBUG] Line 276 unet :  <class 'model.zero123plus_unet.UNet2DConditionModelRamping'>
-# [CFG SCHEDULER] guidance_scale:  tensor(7.4955, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 0):  tensor(7.4955, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 1):  tensor(11.2140, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 2):  tensor(13.7164, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 3):  tensor(11.2140, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 4):  tensor(11.2140, device='cuda:0')
-# [CFG SCHEDULER] scaled guidance_scale (view 5):  tensor(11.2140, device='cuda:0')
-# Apply consistency on step:  0
-#   3%|██████▌                                                                        
-
-# # New wrong
-# [DEBUG] line 961 self.unet:  <class 'd2rgb_pipeline_6views_3views.RefOnlyNoisedUNet'>
-# [DEBUG] line 961 self.unet:  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# [DEBUG] Line 1018 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 1018 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# [DEBUG] Line 641 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 641 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-#   0%|                                                                                                                                                                                                                                                    | 0/36 [00:00<?, ?it/s][DEBUG] Line 778 cross_attention_kwargs:  dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 778 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# dict_keys(['cond_lat', 'control_depth'])
-# [DEBUG] Line 175 cross_attention_kwargs created as :  dict_keys(['mode', 'ref_dict'])
-# [DEBUG] Line 177 unet :  <class 'd2rgb_pipeline_6views_3views.DepthControlUNet'>
-# dict_keys(['mode', 'ref_dict'])
-
-
-# /aigc_cfs_gdp/jiawei/data/general_generate/8de2664a-3768-4ff2-a2dc-5418453b3771/

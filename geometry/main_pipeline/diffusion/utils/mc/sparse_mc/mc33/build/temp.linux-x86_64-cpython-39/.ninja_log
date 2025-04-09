@@ -1,0 +1,3 @@
+# ninja log v5
+0	14169	1742363181237082884	/root/autodl-tmp/xibin/code/PandoraX/geometry/main_pipeline/diffusion/utils/mc/sparse_mc/mc33/build/temp.linux-x86_64-cpython-39/root/autodl-tmp/xibin/code/PandoraX/geometry/main_pipeline/diffusion/utils/mc/sparse_mc/mc33/src/bindings.o	7d1b60b2a878ce62
+1	43534	1742363210593136553	/root/autodl-tmp/xibin/code/PandoraX/geometry/main_pipeline/diffusion/utils/mc/sparse_mc/mc33/build/temp.linux-x86_64-cpython-39/root/autodl-tmp/xibin/code/PandoraX/geometry/main_pipeline/diffusion/utils/mc/sparse_mc/mc33/src/marching_cubes_33.o	ca395216fc3701a4

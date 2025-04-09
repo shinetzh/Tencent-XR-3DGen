@@ -1,0 +1,16 @@
+{
+  "Description" : ["training diffusion with img2img diffusion, with 1024x1024 shape"],
+  
+  "training_task": "img2img",
+
+  "data_config" : {
+    "dataset_name" : "DatasetModTransfer_albedo_metallic_roughness_6views",
+    "dataset_json" : "/aigc_cfs_4/xibin/code/scripts/albedo_metallic_roughness/train_albedo_metallic_roughness_512.json",
+    "image_size": 512,
+    "group_idx_list": [0, 1],
+    "group_idx_range": 12,
+    "cond_idx_list": [0,1,2,3,4,5],
+    "images_num_per_group": 6,
+    "load_from_cache_last": false
+  }
+}

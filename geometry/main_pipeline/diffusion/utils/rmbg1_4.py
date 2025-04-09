@@ -7,7 +7,10 @@ import torch.nn.functional as F
 from transformers import AutoModelForImageSegmentation, pipeline
 from torchvision.transforms.functional import normalize
 
-model_dir = "pretrain_ckpts/RMBG-1.4" #### need download RMBG-1.4 first
+# model_dir = "pretrain_ckpts/RMBG-1.4" #### need download RMBG-1.4 first
+pretrained_weights_path = "Path of the Tencent-XR-3DGen"
+model_dir = f"{pretrained_weights_path}/RMGB-1.4"
+
 if not os.path.exists(model_dir):
     exit("Error: Please download RMBG-1.4 model first")
 

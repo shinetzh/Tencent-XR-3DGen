@@ -4,13 +4,16 @@ import torch
 import os
 from einops import repeat
 from easydict import EasyDict as edict
-try:
-    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    sys.path.append(os.path.join(root_dir, "CraftsMan3D"))
-    from craftsman.models.autoencoders.michelangelo_autoencoder import MichelangeloAutoencoder
-    from craftsman.utils.config import ExperimentConfig, load_config
-except:
-    exit("Error: please clone CraftsMan3D first from https://github.com/wyysf-98/CraftsMan3D.git")
+# try:
+root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(root_dir, "CraftsMan3D"))
+from craftsman.models.autoencoders.michelangelo_autoencoder import MichelangeloAutoencoder
+from craftsman.utils.config import ExperimentConfig, load_config
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# except:
+#     exit("Error: please clone CraftsMan3D first from https://github.com/wyysf-98/CraftsMan3D.git")
 
 class MichelangeloAutoencoderSparse(MichelangeloAutoencoder):
     def sparse_query(self, xyz_samples, latents, num_chunks=10000):
@@ -29,7 +32,8 @@ class MichelangeloAutoencoderSparse(MichelangeloAutoencoder):
 def get_vae_model(specs):
     vae_config = specs["vae_config"]
     if vae_config["vae_type"] == "craftsman_vae":
-        crm_config_path = vae_config["config_path"]
+        # crm_config_path = vae_config["config_path"]
+        crm_config_path = "geometry/main_pipeline/diffusion/pretrain_ckpts/crm_vae_pretrain/config.yaml"
         cfg = load_config(crm_config_path)
         vae_model = MichelangeloAutoencoderSparse(cfg.system.shape_model).eval()
 

@@ -62,9 +62,10 @@ def test(args):
 
     # load vae
     vae = get_vae_model(configs)
+    configs["vae_config"]["pretrain_path"] = "/root/autodl-tmp/xibin/checkpoint/geometry_vae/model.ckpt"
     print("vae loading ckpt...")
     vae_state_dict = torch.load(
-        configs["vae_config"]["pretrain_path"], map_location='cpu')["state_dict"]
+        configs["vae_config"]["pretrain_path"], map_location='cpu', weights_only=False)["state_dict"]
     new_vae_state_dict = {}
     for key, value in vae_state_dict.items():
         new_vae_state_dict[key[12:]] = value
@@ -76,6 +77,7 @@ def test(args):
 
     # load dino model
     print("load dino from:", configs["dino_config"]["pretrain_dir"])
+    configs["dino_config"]["pretrain_dir"] = "/root/autodl-tmp/xibin/code/model/pretrain_ckpts/dinov2-large"
     dino_image_processor = AutoImageProcessor.from_pretrained(
         configs["dino_config"]["pretrain_dir"], local_files_only=True)
     dino_model = AutoModel.from_pretrained(configs["dino_config"]["pretrain_dir"], local_files_only=True).to(
@@ -97,6 +99,7 @@ def test(args):
 
     # load clip model
     print("load clip from:", configs["clip_config"]["pretrain_dir"])
+    configs["clip_config"]["pretrain_dir"] = "/root/autodl-tmp/xibin/code/model/pretrain_ckpts/CLIP-ViT-bigG-14-laion2B-39B-b160k"
     clip_model, _, _ = open_clip.create_model_and_transforms(
         'ViT-bigG-14', cache_dir=configs["clip_config"]["pretrain_dir"])
     clip_model.to(dtype=torch.float16)
@@ -143,8 +146,10 @@ def test(args):
 
     dirs = os.listdir(args.exp_dir)
     dirs = [d for d in dirs if d.startswith("checkpoint")]
-    dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-    path = dirs[-1] if len(dirs) > 0 else None
+    # print(dirs)
+    # dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
+    # path = dirs[-1] if len(dirs) > 0 else None
+    path = dirs[0]
     if path is not None:
         ckpt_dir = os.path.join(args.exp_dir, path, "unet_ema")
         if not os.path.exists(ckpt_dir):
